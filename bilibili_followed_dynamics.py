@@ -4,12 +4,43 @@ from pathlib import Path
 import requests.utils as ru
 from datetime import datetime
 
+# 加载配置文件
+def load_config():
+    config_file = Path('./config.json')
+    default_config = {
+        "followed_dynamic_types": ["DYNAMIC_TYPE_AV", "DYNAMIC_TYPE_DRAW"],
+        "feishu_webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxx",
+        "check_interval_minutes": 1
+    }
+    
+    if config_file.exists():
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            print("✅ 配置文件加载成功")
+            return config
+        except Exception as e:
+            print(f"⚠️ 配置文件读取失败，使用默认配置: {e}")
+            return default_config
+    else:
+        print("⚠️ 配置文件不存在，创建默认配置文件")
+        try:
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(default_config, f, indent=2, ensure_ascii=False)
+            print("✅ 默认配置文件已创建")
+        except Exception as e:
+            print(f"❌ 配置文件创建失败: {e}")
+        return default_config
+
 HEADERS = {
     'User-Agent': 'Apifox/1.0.0 (https://apifox.com)',
     'Accept': '*/*',
     'Host': 'passport.bilibili.com',
     'Connection': 'keep-alive'
 }
+
+# 加载配置
+CONFIG = load_config()
 
 # -----------运行地址-----------
 OLD_BVID_FILE = Path('./bili/old_bvid.json')
@@ -20,7 +51,7 @@ SAVE_FILE = Path('./www/wwwroot/qr.png')
 
 # -----------动态类型配置-----------
 # 支持的动态类型: DYNAMIC_TYPE_AV(视频), DYNAMIC_TYPE_DRAW(文字/图文)
-FOLLOWED_DYNAMIC_TYPES = ['DYNAMIC_TYPE_AV', 'DYNAMIC_TYPE_DRAW']  # 可以自行配置关注的动态类型
+FOLLOWED_DYNAMIC_TYPES = CONFIG.get("followed_dynamic_types", ["DYNAMIC_TYPE_AV", "DYNAMIC_TYPE_DRAW"])
 
 session = requests.Session()
 
@@ -59,7 +90,7 @@ def send_feishu_card_error(error_str: str):
     elements.append({"tag": "hr"})
 
     # 飞书 Webhook 地址
-    FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/77fd030e-7a13-4cf3-a9d0-7f3f7c36f03a"
+    FEISHU_WEBHOOK = CONFIG.get("feishu_webhook")
 
     # 构造卡片消息
     card = {
@@ -129,7 +160,7 @@ def send_feishu_card(dynamics: list[dict]):
             })
         elements.append({"tag": "hr"})
 
-    FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/77fd030e-7a13-4cf3-a9d0-7f3f7c36f03a"
+    FEISHU_WEBHOOK = CONFIG.get("feishu_webhook")
     # 根据动态类型设置标题
     has_video = any(d['type'] == 'video' for d in dynamics)
     has_text = any(d['type'] == 'text' for d in dynamics)
@@ -432,7 +463,10 @@ def job():
     else:
         print("登录失败，无法继续抓取")
 
-schedule.every(1).minutes.do(job)
+# 使用配置文件中的检查间隔
+interval_minutes = CONFIG.get("check_interval_minutes", 1)
+print(f"⏰ 设置检查间隔为 {interval_minutes} 分钟")
+schedule.every(interval_minutes).minutes.do(job)
 
 while True:
     schedule.run_pending()

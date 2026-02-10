@@ -1,0 +1,8 @@
+{
+  "followed_dynamic_types": [
+    "DYNAMIC_TYPE_AV",
+    "DYNAMIC_TYPE_DRAW"
+  ],
+  "feishu_webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/77fd030e-7a13-4cf3-a9d0-7f3f7c36f03a",
+  "check_interval_minutes": 1
+}
