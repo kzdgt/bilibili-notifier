@@ -6,7 +6,17 @@ from datetime import datetime
 
 # 加载配置文件
 def load_config():
-    config_file = Path('./config.json')
+    # 检测是否在Docker环境中运行
+    is_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_ENV') == 'true'
+    
+    if is_docker:
+        # Docker环境：配置文件通过卷挂载，直接使用固定路径
+        config_file = Path('/app/config.json')
+        print("🐳 检测到Docker环境，使用容器内配置路径")
+    else:
+        # 本地环境：使用相对路径
+        config_file = Path('./config.json')
+    
     default_config = {
         "followed_dynamic_types": ["DYNAMIC_TYPE_AV", "DYNAMIC_TYPE_DRAW"],
         "feishu_webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxx",
@@ -23,13 +33,16 @@ def load_config():
             print(f"⚠️ 配置文件读取失败，使用默认配置: {e}")
             return default_config
     else:
-        print("⚠️ 配置文件不存在，创建默认配置文件")
-        try:
-            with open(config_file, 'w', encoding='utf-8') as f:
-                json.dump(default_config, f, indent=2, ensure_ascii=False)
-            print("✅ 默认配置文件已创建")
-        except Exception as e:
-            print(f"❌ 配置文件创建失败: {e}")
+        if not is_docker:
+            print("⚠️ 配置文件不存在，创建默认配置文件")
+            try:
+                with open(config_file, 'w', encoding='utf-8') as f:
+                    json.dump(default_config, f, indent=2, ensure_ascii=False)
+                print("✅ 默认配置文件已创建")
+            except Exception as e:
+                print(f"❌ 配置文件创建失败: {e}")
+        else:
+            print("⚠️ Docker环境：配置文件不存在，使用默认配置")
         return default_config
 
 HEADERS = {
@@ -42,11 +55,24 @@ HEADERS = {
 # 加载配置
 CONFIG = load_config()
 
+# 检测是否在Docker环境中运行
+is_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_ENV') == 'true'
+
+if is_docker:
+    # Docker环境：使用容器内路径
+    DATA_DIR = Path('/app/bili')
+    WWW_DIR = Path('/app/www/wwwroot')
+    print("🐳 Docker环境：使用容器内数据路径")
+else:
+    # 本地环境：使用相对路径
+    DATA_DIR = Path('./bili')
+    WWW_DIR = Path('./www/wwwroot')
+
 # -----------运行地址-----------
-OLD_BVID_FILE = Path('./bili/old_bvid.json')
-COOKIE_FILE = Path('./bili/cookie.txt')
-JSON_FILE = Path("./bili/jsonAll.json")
-SAVE_FILE = Path('./www/wwwroot/qr.png')
+OLD_BVID_FILE = DATA_DIR / 'old_bvid.json'
+COOKIE_FILE = DATA_DIR / 'cookie.txt'
+JSON_FILE = DATA_DIR / 'jsonAll.json'
+SAVE_FILE = WWW_DIR / 'qr.png'
 #↑↑服务器公网链接展示图片
 
 # -----------动态类型配置-----------
@@ -55,12 +81,13 @@ FOLLOWED_DYNAMIC_TYPES = CONFIG.get("followed_dynamic_types", ["DYNAMIC_TYPE_AV"
 
 session = requests.Session()
 
-def saveNprint_qr_image(text: str, path: str) -> None:
-    # 确保目录存在
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+def saveNprint_qr_image(text: str, path) -> None:
+    # 确保目录存在，将Path对象转换为字符串路径
+    path_str = str(path)
+    os.makedirs(os.path.dirname(path_str), exist_ok=True)
     img = qrcode.make(text)
-    img.save(path)
-    print("二维码已保存到", path)
+    img.save(path_str)
+    print("二维码已保存到", path_str)
     qr = qrcode.QRCode(border=1)
     qr.add_data(text)
     qr.print_ascii(invert=True)
@@ -485,6 +512,7 @@ def job():
         bililogin.get_followed_dynamic()
     else:
         print("登录失败，无法继续抓取")
+    print(f"[{datetime.now():%H:%M:%S}] done!!!")
 
 # 使用配置文件中的检查间隔
 interval_minutes = CONFIG.get("check_interval_minutes", 1)
