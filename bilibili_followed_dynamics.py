@@ -114,7 +114,8 @@ def send_feishu_card(dynamics: list[dict]):
         return
 
     elements = []
-    for dynamic in dynamics:
+    # 反转动态列表，让最新的动态显示在最前面
+    for dynamic in reversed(dynamics):
         # 纯文本段落 + 超链接按钮
         if dynamic['type'] == 'video':
             elements.append({
@@ -375,7 +376,6 @@ class session_cookie:
             data = json.load(f)
 
         items = data.get('data', {}).get('items', [])
-
         dynamics = []
         for item in items:
             dynamic_type = item.get('type')
