@@ -632,6 +632,8 @@ class session_cookie:
 def job():
     bililogin = session_cookie()
     if bililogin.ensure_login():  # 等待登录成功
+        # 随机等待1-10秒
+        time.sleep(random.randint(1, 10))
         print(f"[{datetime.now():%H:%M:%S}] 开始抓取...")
         bililogin.get_followed_dynamic()
     else:
