@@ -12,15 +12,20 @@ HEADERS = {
 }
 
 # -----------运行地址-----------
-OLD_BVID_FILE = Path('/bili/old_bvid.json')
-COOKIE_FILE = Path('/bili/cookie.txt')
-JSON_FILE = Path("/bili/jsonAll.json")
-SAVE_FILE = Path('/www/wwwroot/qr.png')
+OLD_BVID_FILE = Path('./bili/old_bvid.json')
+COOKIE_FILE = Path('./bili/cookie.txt')
+JSON_FILE = Path("./bili/jsonAll.json")
+SAVE_FILE = Path('./www/wwwroot/qr.png')
 #↑↑服务器公网链接展示图片
+
+# -----------动态类型配置-----------
+# 支持的动态类型: DYNAMIC_TYPE_AV(视频), DYNAMIC_TYPE_DRAW(文字/图文)
+FOLLOWED_DYNAMIC_TYPES = ['DYNAMIC_TYPE_AV', 'DYNAMIC_TYPE_DRAW']  # 可以自行配置关注的动态类型
 
 session = requests.Session()
 
 def saveNprint_qr_image(text: str, path: str) -> None:
+    # 确保目录存在
     os.makedirs(os.path.dirname(path), exist_ok=True)
     img = qrcode.make(text)
     img.save(path)
@@ -54,7 +59,7 @@ def send_feishu_card_error(error_str: str):
     elements.append({"tag": "hr"})
 
     # 飞书 Webhook 地址
-    FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/"
+    FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/77fd030e-7a13-4cf3-a9d0-7f3f7c36f03a"
 
     # 构造卡片消息
     card = {
@@ -73,41 +78,76 @@ def send_feishu_card_error(error_str: str):
     print("飞书推送结果：", resp.json())
 
 
-def send_feishu_card(videos: list[dict]):
-    if not videos:
+def send_feishu_card(dynamics: list[dict]):
+    if not dynamics:
         return
 
     elements = []
-    for v in videos:
+    for dynamic in dynamics:
         # 纯文本段落 + 超链接按钮
-        elements.append({
-            "tag": "div",
-            "text": {
-                "tag": "lark_md",
-                "content": (
-                    f"**UP：**{v['name']}  \n"
-                    f"**时间：**{v['pub_ts']}  \n"
-                    f"**标题：**{v['title']}"
-                )
-            }
-        })
-        elements.append({
-            "tag": "action",
-            "actions": [{
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": "👉 打开视频"},
-                "type": "primary",
-                "url": f"https://www.bilibili.com/video/{v['bvid']}"
-            }]
-        })
+        if dynamic['type'] == 'video':
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        f"**UP：**{dynamic['name']}  \n"
+                        f"**时间：**{dynamic['pub_ts']}  \n"
+                        f"**视频：**{dynamic['title']}"
+                    )
+                }
+            })
+            elements.append({
+                "tag": "action",
+                "actions": [{
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": "👉 打开视频"},
+                    "type": "primary",
+                    "url": f"https://www.bilibili.com/video/{dynamic['bvid']}"
+                }]
+            })
+        elif dynamic['type'] == 'text':
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        f"**UP：**{dynamic['name']}  \n"
+                        f"**时间：**{dynamic['pub_ts']}  \n"
+                        f"**动态：**{dynamic['title']}"
+                    )
+                }
+            })
+            elements.append({
+                "tag": "action",
+                "actions": [{
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": "👉 查看完整动态"},
+                    "type": "primary",
+                    "url": f"https://t.bilibili.com/{dynamic['dynamic_id']}"
+                }]
+            })
         elements.append({"tag": "hr"})
 
-    FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/"
+    FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/77fd030e-7a13-4cf3-a9d0-7f3f7c36f03a"
+    # 根据动态类型设置标题
+    has_video = any(d['type'] == 'video' for d in dynamics)
+    has_text = any(d['type'] == 'text' for d in dynamics)
+    
+    if has_video and has_text:
+        title = "🎞 关注的 UP 更新啦！"
+    elif has_video:
+        title = "🎞 关注的 UP 更新视频啦！"
+    elif has_text:
+        title = "📝 关注的 UP 发动态啦！"
+    else:
+        title = "📢 关注的 UP 有更新啦！"
+
     card = {
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": "🎞 关注的 UP 更新视频啦！"},
+                "title": {"tag": "plain_text", "content": title},
                 "template": "blue"
             },
             "elements": elements
@@ -213,6 +253,8 @@ class session_cookie:
         saveNprint_qr_image(login_url, SAVE_FILE)
 
     def save_cookies(self):
+        # 确保目录存在
+        os.makedirs(os.path.dirname(COOKIE_FILE), exist_ok=True)
         with open(COOKIE_FILE, 'w', encoding='utf-8') as f:
             json.dump(ru.dict_from_cookiejar(self.sess.cookies), f, ensure_ascii=False)
         print("Cookie 已保存到", COOKIE_FILE)
@@ -287,10 +329,12 @@ class session_cookie:
             'Host': 'api.bilibili.com'
         }
         resp = self.sess.get(Url_followed_dynamics, headers=headers).json()
+        print(json.dumps(resp, ensure_ascii=False, indent=2, sort_keys=True))
         has_update = self.compare_and_run(resp)
         if not JSON_FILE.exists():
             print("首次运行，本地无旧数据，视为更新。")
-        # 写json
+        # 确保目录存在并写json
+        os.makedirs(os.path.dirname(JSON_FILE), exist_ok=True)
         with open(JSON_FILE, 'w', encoding='utf-8') as f:
             json.dump(resp, f, ensure_ascii=False)
         time.sleep(1)
@@ -301,35 +345,84 @@ class session_cookie:
 
         items = data.get('data', {}).get('items', [])
 
-        videos = []
+        dynamics = []
         for item in items:
-            if item.get('type') != 'DYNAMIC_TYPE_AV':
+            dynamic_type = item.get('type')
+            if dynamic_type not in FOLLOWED_DYNAMIC_TYPES:
                 continue
-            archive = item.get('modules', {}).get('module_dynamic', {}).get('major', {}).get('archive', {})
-            if not archive.get('bvid'):
-                continue
-            videos.append({
-                'name': item['modules']['module_author']['name'],
-                'pub_ts': datetime.fromtimestamp(item['modules']['module_author']['pub_ts']).strftime('%Y-%m-%d %H:%M:%S'),
-                'title': archive['title'],
-                'bvid': archive['bvid']
-            })
+                
+            # 获取基础信息
+            author_name = item['modules']['module_author']['name']
+            pub_ts = datetime.fromtimestamp(item['modules']['module_author']['pub_ts']).strftime('%Y-%m-%d %H:%M:%S')
+            
+            if dynamic_type == 'DYNAMIC_TYPE_AV':
+                # 视频动态处理
+                archive = item.get('modules', {}).get('module_dynamic', {}).get('major', {}).get('archive', {})
+                if not archive.get('bvid'):
+                    continue
+                dynamics.append({
+                    'type': 'video',
+                    'name': author_name,
+                    'pub_ts': pub_ts,
+                    'title': archive['title'],
+                    'bvid': archive['bvid']
+                })
+            elif dynamic_type == 'DYNAMIC_TYPE_DRAW':
+                # 文字/图文动态处理
+                opus = item.get('modules', {}).get('module_dynamic', {}).get('major', {}).get('opus', {})
+                summary = opus.get('summary', {})
+                text_content = summary.get('text', '') if summary else ''
+                
+                if not text_content:
+                    continue
+                    
+                dynamics.append({
+                    'type': 'text',
+                    'name': author_name,
+                    'pub_ts': pub_ts,
+                    'title': text_content[:100] + ('...' if len(text_content) > 100 else ''),  # 截取前100字符
+                    'content': text_content,
+                    'dynamic_id': item.get('id_str', '')
+                })
 
-        # 读取旧 bvid 列表，文件不存在或空/损坏都返回空集合
+        # 读取旧的动态ID列表，文件不存在或空/损坏都返回空集合
         try:
             with OLD_BVID_FILE.open(encoding='utf-8') as f:
                 content = f.read().strip()
-                old_bvids = set(json.loads(content) if content else [])
+                old_dynamic_ids = set(json.loads(content) if content else [])
         except (FileNotFoundError, json.JSONDecodeError):
-            old_bvids = set()
-        new_videos = [v for v in videos if v['bvid'] not in old_bvids]
+            old_dynamic_ids = set()
+            
+        # 根据动态类型生成唯一ID
+        new_dynamics = []
+        for dynamic in dynamics:
+            if dynamic['type'] == 'video':
+                dynamic_id = f"video_{dynamic['bvid']}"
+            elif dynamic['type'] == 'text':
+                dynamic_id = f"text_{dynamic['dynamic_id']}"
+            else:
+                continue
+                
+            if dynamic_id not in old_dynamic_ids:
+                new_dynamics.append(dynamic)
 
-        if new_videos:
-            send_feishu_card(new_videos)
-            # 保存本轮全部 bvid 供下次差分
-            json.dump([v['bvid'] for v in videos], OLD_BVID_FILE.open('w', encoding='utf-8'))
+        if new_dynamics:
+            # 统计各种类型的动态数量
+            video_count = sum(1 for d in new_dynamics if d['type'] == 'video')
+            text_count = sum(1 for d in new_dynamics if d['type'] == 'text')
+            print(f"发现新动态：{video_count}个视频，{text_count}个文字动态")
+            send_feishu_card(new_dynamics)
+            # 确保目录存在并保存本轮全部动态ID供下次差分
+            os.makedirs(os.path.dirname(OLD_BVID_FILE), exist_ok=True)
+            all_dynamic_ids = []
+            for dynamic in dynamics:
+                if dynamic['type'] == 'video':
+                    all_dynamic_ids.append(f"video_{dynamic['bvid']}")
+                elif dynamic['type'] == 'text':
+                    all_dynamic_ids.append(f"text_{dynamic['dynamic_id']}")
+            json.dump(all_dynamic_ids, OLD_BVID_FILE.open('w', encoding='utf-8'))
         else:
-            print("本次无新增视频，不推送")
+            print("本次无新增动态，不推送")
 
 def job():
     bililogin = session_cookie()
@@ -339,8 +432,7 @@ def job():
     else:
         print("登录失败，无法继续抓取")
 
-randnum = random.randint(1, 3)
-schedule.every(randnum).minutes.do(job)
+schedule.every(1).minutes.do(job)
 
 while True:
     schedule.run_pending()
