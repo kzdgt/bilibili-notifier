@@ -8,11 +8,15 @@
 ### 功能特点:
 
 1.  **自动登录**：支持扫码登录，自动处理 Cookie 的保存和验证。
-2.  **多类型监控**：支持监控视频动态和文字/图文动态。
+2.  **多类型监控**：支持监控视频、图文、转发等多种动态类型。
 3.  **消息推送**：通过飞书机器人发送包含视频信息的卡片消息。
 4.  **数据比较**：使用临时文件和本地文件比较，确保只推送新内容。
 5. **Docker支持**：提供Docker容器化部署方案。
 6. **灵活配置**：通过配置文件自定义监控类型和推送设置。
+7. **MID过滤**：支持指定特定UP主进行监控，可配置关注列表。
+8. **跨平台支持**：支持Windows、Linux、Mac等多平台运行。
+9. **异常处理**：完善的错误处理和自动重试机制。
+10. **一键部署**：提供自动化部署脚本，简化安装过程。
 
 ## 项目结构
 
@@ -131,8 +135,13 @@ docker-compose exec bilibili-notifier /bin/bash
 ### 方式二：本地部署
 
 #### 1. 环境要求
-*   Python 3.x
-*   所需 Python 库：`requests`, `qrcode`, `schedule`
+*   **Python版本**: Python 3.7 或更高版本
+*   **操作系统**: Windows 10/11, Linux, macOS
+*   **网络要求**: 能够访问B站API和飞书API
+*   **依赖库**: 
+  - `requests==2.31.0` - HTTP请求库
+  - `qrcode==7.4.2` - 二维码生成库  
+  - `schedule==1.2.0` - 定时任务库
 
 #### 2. 安装依赖
 ```bash
@@ -140,47 +149,83 @@ pip install -r requirements.txt
 ```
 
 #### 3. 配置文件
-脚本会自动生成默认配置文件`config.json`，你也可以手动创建：
-```bash
-# 编辑 config.json，设置你的飞书Webhook地址
-# 配置文件会在首次运行时自动生成
-```
 
-配置文件说明：
+**创建方式：**
+- **自动创建**：运行脚本自动生成
+- **手动创建**：在项目根目录创建`config.json`（推荐）
+
+**配置示例：**
 ```json
 {
   "followed_dynamic_types": ["DYNAMIC_TYPE_AV", "DYNAMIC_TYPE_DRAW"],
   "feishu_webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/你的webhook地址",
-  "check_interval_minutes": 1
+  "check_interval_minutes": 3,
+  "followed_mids": []
 }
 ```
 
-### 配置项详细说明
+**配置说明：**
 
-| 配置项 | 类型 | 必填 | 说明 | 可选值 |
-|--------|------|------|------|--------|
-| `followed_dynamic_types` | array | 是 | 监控的动态类型 | `DYNAMIC_TYPE_AV` (视频)<br>`DYNAMIC_TYPE_DRAW` (图文/文字) |
-| `feishu_webhook` | string | 是 | 飞书机器人Webhook地址 | 从飞书群聊机器人设置中获取 |
-| `check_interval_minutes` | integer | 否 | 检查间隔时间（分钟） | 建议值：1-5分钟 |
+| 配置项 | 必填 | 说明              | 默认值 |
+|--------|------|-----------------|--------|
+| `feishu_webhook` | ✅ | 飞书机器人Webhook地址  | 无 |
+| `followed_dynamic_types` | ❌ | 监控类型：见下方动态类型说明  | `["DYNAMIC_TYPE_AV", "DYNAMIC_TYPE_DRAW"]` |
+| `check_interval_minutes` | ❌ | 检查间隔(分钟)        | `1` |
+| `followed_mids` | ❌ | 指定UP主MID，留空监控所有 | `[]` |
+
+
+**配置提示：**
+- 修改配置后需重启脚本生效
+- 配置文件需使用UTF-8编码
 
 ### 动态类型说明
 
-- **DYNAMIC_TYPE_AV**: 视频动态，当关注的UP主发布新视频时触发通知
-- **DYNAMIC_TYPE_DRAW**: 图文/文字动态，当关注的UP主发布图文或纯文字动态时触发通知
+- **DYNAMIC_TYPE_AV**: 视频动态 - 新视频发布时通知
+- **DYNAMIC_TYPE_DRAW**: 图文动态 - 图文/文字更新时通知  
+- **DYNAMIC_TYPE_FORWARD**: 转发动态 - 转发其他UP主时通知
 
-### 飞书Webhook获取方法
+**推荐组合：**
+- 只关注视频：`["DYNAMIC_TYPE_AV"]`
+- 视频+图文：`["DYNAMIC_TYPE_AV", "DYNAMIC_TYPE_DRAW"]` （默认）
+- 全部监控：`["DYNAMIC_TYPE_AV", "DYNAMIC_TYPE_DRAW", "DYNAMIC_TYPE_FORWARD"]`
 
-1. 在飞书群聊中点击右上角"..." → "设置" → "群机器人"
-2. 点击"添加机器人"，选择"自定义机器人"
-3. 设置机器人名称和头像，点击"添加"
-4. 复制Webhook地址，填入配置文件中的`feishu_webhook`字段
+### MID过滤功能
+
+指定UP主MID，只监控特定UP主：
+```json
+{"followed_mids": ["11111", "22222"]}
+```
+
+**获取MID方法：**
+- 访问UP主主页：`https://space.bilibili.com/11111`
+- URL中的数字就是MID（如`11111`）
+
+**留空`[]`监控所有关注的UP主**
+
+### 飞书Webhook获取
+
+1. 飞书群聊 → 右上角"..." → "设置" → "群机器人"
+2. "添加机器人" → "自定义机器人" → "添加"
+3. 复制Webhook地址，填入配置文件
 
 ## 使用方法
 
-### 1. 运行脚本
+### 首次使用流程
+
+#### 1. 配置飞书Webhook
+创建`config.json`，填入Webhook地址：
+```json
+{"feishu_webhook": "你的webhook地址"}
+```
+
+#### 2. 启动脚本
 
 **Docker方式：**
 ```bash
+# 一键部署（推荐）
+bash docker-deploy.sh
+
+# 或手动启动
 docker-compose up -d
 ```
 
@@ -189,24 +234,47 @@ docker-compose up -d
 python bilibili_followed_dynamics.py
 ```
 
-### 2. 扫码登录
+#### 3. 扫码登录
 
-如果本地没有有效的 Cookie，脚本会生成一个二维码并通过飞书机器人发送消息提醒。使用哔哩哔哩 App 扫描二维码进行登录。
+首次运行或Cookie失效时：
+1. 脚本会生成登录二维码
+2. 使用哔哩哔哩App扫描二维码
+3. 登录成功后，Cookie会自动保存
 
-### 3. 监控动态
+#### 4. 监控运行
 
-登录成功后，脚本会定期检查关注的 UP 主的动态，并在有新视频或文字动态发布时通过飞书机器人发送消息通知。
+登录成功后，脚本会自动：
+- 定期检查关注的UP主动态
+- 识别新视频、图文、转发等内容
+- 通过飞书机器人发送通知
+- 记录运行日志便于排查问题
 
-### 4. 查看日志
+### 日常管理
 
+#### 查看运行状态
 **Docker方式：**
 ```bash
-docker-compose logs -f
+docker-compose logs -f    # 实时查看日志
+docker-compose ps         # 查看服务状态
 ```
 
 **本地方式：**
 ```bash
-# 实时查看输出
+# 实时查看输出（按Ctrl+C停止）
+python bilibili_followed_dynamics.py
+```
+
+#### 停止和重启
+**Docker方式：**
+```bash
+docker-compose down       # 停止服务
+docker-compose restart    # 重启服务
+```
+
+**本地方式：**
+```bash
+# 按Ctrl+C停止脚本运行
+# 重新运行即可重启
 python bilibili_followed_dynamics.py
 ```
 
@@ -241,7 +309,7 @@ python bilibili_followed_dynamics.py
 
 ### 定时任务
 
-脚本使用 `schedule` 库实现定时任务，每次运行后会随机等待 1 - 3 分钟后再次运行。
+脚本使用 `schedule` 库实现定时任务，支持自定义检查间隔。
 
 ### 使用建议
 
@@ -308,6 +376,19 @@ A: 可能原因：
 **Q: 监控间隔时间如何调整？**
 A: 修改配置文件中的`check_interval_minutes`值，建议设置为1-5分钟。
 
+**Q: 如何只监控特定的UP主？**
+A: 在配置文件中设置`followed_mids`字段：
+```json
+"followed_mids": ["11111", "22222"]
+```
+留空或设置为`[]`表示监控所有关注的UP主。
+
+**Q: 支持监控哪些类型的动态？**
+A: 目前支持三种类型：
+- `DYNAMIC_TYPE_AV`: 视频动态
+- `DYNAMIC_TYPE_DRAW`: 图文/文字动态  
+- `DYNAMIC_TYPE_FORWARD`: 转发动态
+
 ## 注意事项
 
 *   **Webhook有效性**: 请确保飞书 Webhook 地址的有效性，否则消息推送将失败。
@@ -317,6 +398,13 @@ A: 修改配置文件中的`check_interval_minutes`值，建议设置为1-5分�
  *   **Cookie管理**: 脚本会自动管理Cookie，无需手动干预，但建议定期检查和更新。
 
 ## 更新日志
+
+### v1.1.0 (2024-02-XX)
+- 🆕 新增MID过滤功能，支持指定特定UP主监控
+- 🔄 新增转发动态监控支持（DYNAMIC_TYPE_FORWARD）
+- 📋 完善配置文件说明和使用文档
+- 🔧 优化Docker部署流程和脚本
+- 🐛 修复已知问题和改进稳定性
 
 ### v1.0.0 (2024-01-XX)
 - ✨ 初始版本发布
