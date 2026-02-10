@@ -186,14 +186,66 @@ def send_feishu_card(dynamics: list[dict]):
                     "url": f"https://t.bilibili.com/{dynamic['dynamic_id']}"
                 }]
             })
+        elif dynamic['type'] == 'forward_video':
+            # 转发视频动态
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        f"**UP：**{dynamic['name']} 转发视频  \n"
+                        f"**时间：**{dynamic['pub_ts']}  \n"
+                        f"**转发评论：**{dynamic['forward_comment']}  \n"
+                        f"**原UP：**{dynamic['orig_author']}  \n"
+                        f"**视频：**{dynamic['title']}"
+                    )
+                }
+            })
+            elements.append({
+                "tag": "action",
+                "actions": [{
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": "👉 查看转发动态"},
+                    "type": "primary",
+                    "url": f"https://t.bilibili.com/{dynamic['dynamic_id']}"
+                }]
+            })
+        elif dynamic['type'] == 'forward_text':
+            # 转发文字动态
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        f"**UP：**{dynamic['name']} 转发动态  \n"
+                        f"**时间：**{dynamic['pub_ts']}  \n"
+                        f"**转发评论：**{dynamic['forward_comment']}  \n"
+                        f"**原UP：**{dynamic['orig_author']}  \n"
+                        f"**原动态：**{dynamic['title']}"
+                    )
+                }
+            })
+            elements.append({
+                "tag": "action",
+                "actions": [{
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": "👉 查看转发动态"},
+                    "type": "primary",
+                    "url": f"https://t.bilibili.com/{dynamic['dynamic_id']}"
+                }]
+            })
         elements.append({"tag": "hr"})
 
     FEISHU_WEBHOOK = CONFIG.get("feishu_webhook")
     # 根据动态类型设置标题
     has_video = any(d['type'] == 'video' for d in dynamics)
     has_text = any(d['type'] == 'text' for d in dynamics)
+    has_forward_video = any(d['type'] == 'forward_video' for d in dynamics)
+    has_forward_text = any(d['type'] == 'forward_text' for d in dynamics)
     
-    if has_video and has_text:
+    if has_forward_video or has_forward_text:
+        title = "🔄 关注的 UP 有转发动态啦！"
+    elif has_video and has_text:
         title = "🎞 关注的 UP 更新啦！"
     elif has_video:
         title = "🎞 关注的 UP 更新视频啦！"
@@ -442,6 +494,52 @@ class session_cookie:
                     'content': text_content,
                     'dynamic_id': item.get('id_str', '')
                 })
+            elif dynamic_type == 'DYNAMIC_TYPE_FORWARD':
+                # 转发动态处理
+                orig_data = item.get('orig', {})
+                if not orig_data:
+                    continue
+                    
+                # 获取转发者的评论
+                desc = item.get('modules', {}).get('module_dynamic', {}).get('desc', {})
+                forward_comment = desc.get('text', '') if desc else ''
+                
+                # 获取原动态信息
+                orig_type = orig_data.get('type', '')
+                orig_modules = orig_data.get('modules', {})
+                orig_author = orig_modules.get('module_author', {})
+                orig_author_name = orig_author.get('name', '未知作者')
+                
+                if orig_type == 'DYNAMIC_TYPE_AV':
+                    # 原动态是视频
+                    orig_archive = orig_modules.get('module_dynamic', {}).get('major', {}).get('archive', {})
+                    if orig_archive and orig_archive.get('bvid'):
+                        dynamics.append({
+                            'type': 'forward_video',
+                            'name': author_name,
+                            'pub_ts': pub_ts,
+                            'title': orig_archive['title'],
+                            'forward_comment': forward_comment[:100] + ('...' if len(forward_comment) > 100 else ''),
+                            'orig_author': orig_author_name,
+                            'bvid': orig_archive['bvid'],
+                            'dynamic_id': item.get('id_str', '')
+                        })
+                elif orig_type == 'DYNAMIC_TYPE_DRAW':
+                    # 原动态是文字
+                    orig_opus = orig_modules.get('module_dynamic', {}).get('major', {}).get('opus', {})
+                    orig_summary = orig_opus.get('summary', {})
+                    orig_text = orig_summary.get('text', '') if orig_summary else ''
+                    
+                    if orig_text:
+                        dynamics.append({
+                            'type': 'forward_text',
+                            'name': author_name,
+                            'pub_ts': pub_ts,
+                            'title': orig_text[:100] + ('...' if len(orig_text) > 100 else ''),
+                            'forward_comment': forward_comment[:100] + ('...' if len(forward_comment) > 100 else ''),
+                            'orig_author': orig_author_name,
+                            'dynamic_id': item.get('id_str', '')
+                        })
 
         # 读取旧的动态ID列表，文件不存在或空/损坏都返回空集合
         try:
@@ -468,6 +566,10 @@ class session_cookie:
                 dynamic_id = f"video_{dynamic['bvid']}"
             elif dynamic['type'] == 'text':
                 dynamic_id = f"text_{dynamic['dynamic_id']}"
+            elif dynamic['type'] == 'forward_video':
+                dynamic_id = f"forward_video_{dynamic['bvid']}"
+            elif dynamic['type'] == 'forward_text':
+                dynamic_id = f"forward_text_{dynamic['dynamic_id']}"
             else:
                 continue
                 
@@ -480,10 +582,18 @@ class session_cookie:
         # 显示处理统计
         total_video = sum(1 for d in dynamics if d['type'] == 'video')
         total_text = sum(1 for d in dynamics if d['type'] == 'text')
+        total_forward_video = sum(1 for d in dynamics if d['type'] == 'forward_video')
+        total_forward_text = sum(1 for d in dynamics if d['type'] == 'forward_text')
+        
         new_video = sum(1 for d in new_dynamics if d['type'] == 'video')
         new_text = sum(1 for d in new_dynamics if d['type'] == 'text')
+        new_forward_video = sum(1 for d in new_dynamics if d['type'] == 'forward_video')
+        new_forward_text = sum(1 for d in new_dynamics if d['type'] == 'forward_text')
         
-        print(f"📊 处理统计：总{total_video}个视频，{total_text}个文字动态 | 新{new_video}个视频，{new_text}个文字动态 | 已过滤{total_video + total_text - new_video - new_text}个重复动态")
+        total_all = total_video + total_text + total_forward_video + total_forward_text
+        new_all = new_video + new_text + new_forward_video + new_forward_text
+        
+        print(f"📊 处理统计：总{total_video}视频+{total_text}文字+{total_forward_video}转发视频+{total_forward_text}转发文字 | 新{new_all}个 | 已过滤{total_all - new_all}个重复动态")
         
         if new_dynamics:
             send_feishu_card(new_dynamics)
@@ -495,6 +605,10 @@ class session_cookie:
                     all_dynamic_ids.append(f"video_{dynamic['bvid']}")
                 elif dynamic['type'] == 'text':
                     all_dynamic_ids.append(f"text_{dynamic['dynamic_id']}")
+                elif dynamic['type'] == 'forward_video':
+                    all_dynamic_ids.append(f"forward_video_{dynamic['bvid']}")
+                elif dynamic['type'] == 'forward_text':
+                    all_dynamic_ids.append(f"forward_text_{dynamic['dynamic_id']}")
             
             # 调试信息：显示要保存的动态ID
             print(f"💾 保存动态ID列表：{all_dynamic_ids[:5]}{'...' if len(all_dynamic_ids) > 5 else ''} (共{len(all_dynamic_ids)}个)")
