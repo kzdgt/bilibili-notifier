@@ -420,7 +420,17 @@ class session_cookie:
         try:
             with OLD_BVID_FILE.open(encoding='utf-8') as f:
                 content = f.read().strip()
-                old_dynamic_ids = set(json.loads(content) if content else [])
+                old_data = json.loads(content) if content else []
+                
+                # 数据迁移：检查是否是旧的bvid格式（只有bvid字符串）
+                if old_data and isinstance(old_data[0], str) and not old_data[0].startswith(('video_', 'text_')):
+                    # 旧格式迁移：将["BV1xxx", "BV2xxx"]转换为["video_BV1xxx", "video_BV2xxx"]
+                    old_dynamic_ids = set(f"video_{bvid}" for bvid in old_data)
+                    print(f"🔄 检测到旧的bvid格式，已迁移 {len(old_dynamic_ids)} 个视频动态ID")
+                else:
+                    # 新格式直接使用
+                    old_dynamic_ids = set(old_data)
+                    
         except (FileNotFoundError, json.JSONDecodeError):
             old_dynamic_ids = set()
             
@@ -436,12 +446,19 @@ class session_cookie:
                 
             if dynamic_id not in old_dynamic_ids:
                 new_dynamics.append(dynamic)
+            else:
+                # 调试信息：显示被过滤的重复动态
+                print(f"🔄 过滤重复动态：{dynamic['name']} - {dynamic['title'][:30]}...")
 
+        # 显示处理统计
+        total_video = sum(1 for d in dynamics if d['type'] == 'video')
+        total_text = sum(1 for d in dynamics if d['type'] == 'text')
+        new_video = sum(1 for d in new_dynamics if d['type'] == 'video')
+        new_text = sum(1 for d in new_dynamics if d['type'] == 'text')
+        
+        print(f"📊 处理统计：总{total_video}个视频，{total_text}个文字动态 | 新{new_video}个视频，{new_text}个文字动态 | 已过滤{total_video + total_text - new_video - new_text}个重复动态")
+        
         if new_dynamics:
-            # 统计各种类型的动态数量
-            video_count = sum(1 for d in new_dynamics if d['type'] == 'video')
-            text_count = sum(1 for d in new_dynamics if d['type'] == 'text')
-            print(f"发现新动态：{video_count}个视频，{text_count}个文字动态")
             send_feishu_card(new_dynamics)
             # 确保目录存在并保存本轮全部动态ID供下次差分
             os.makedirs(os.path.dirname(OLD_BVID_FILE), exist_ok=True)
@@ -451,7 +468,13 @@ class session_cookie:
                     all_dynamic_ids.append(f"video_{dynamic['bvid']}")
                 elif dynamic['type'] == 'text':
                     all_dynamic_ids.append(f"text_{dynamic['dynamic_id']}")
-            json.dump(all_dynamic_ids, OLD_BVID_FILE.open('w', encoding='utf-8'))
+            
+            # 调试信息：显示要保存的动态ID
+            print(f"💾 保存动态ID列表：{all_dynamic_ids[:5]}{'...' if len(all_dynamic_ids) > 5 else ''} (共{len(all_dynamic_ids)}个)")
+            
+            with open(OLD_BVID_FILE, 'w', encoding='utf-8') as f:
+                json.dump(all_dynamic_ids, f, ensure_ascii=False)
+            print(f"✅ 动态ID列表已保存到 {OLD_BVID_FILE}")
         else:
             print("本次无新增动态，不推送")
 
