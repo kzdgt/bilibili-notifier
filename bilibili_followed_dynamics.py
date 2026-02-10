@@ -456,14 +456,24 @@ class session_cookie:
 
         items = data.get('data', {}).get('items', [])
         dynamics = []
+        
+        # 获取配置的MID过滤列表
+        followed_mids = CONFIG.get("followed_mids", [])
+        
         for item in items:
             dynamic_type = item.get('type')
             if dynamic_type not in FOLLOWED_DYNAMIC_TYPES:
                 continue
-                
+            
             # 获取基础信息
             author_name = item['modules']['module_author']['name']
+            author_mid = str(item['modules']['module_author']['mid'])  # 获取作者MID
             pub_ts = datetime.fromtimestamp(item['modules']['module_author']['pub_ts']).strftime('%Y-%m-%d %H:%M:%S')
+            
+            # MID过滤：如果配置了followed_mids且不为空，则只关注这些MID
+            if followed_mids and author_mid not in followed_mids:
+                print(f"🔄 过滤非关注UP主：{author_name} (MID: {author_mid})")
+                continue
             
             if dynamic_type == 'DYNAMIC_TYPE_AV':
                 # 视频动态处理
