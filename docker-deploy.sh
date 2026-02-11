@@ -19,8 +19,8 @@ fi
 echo "✅ Docker环境检查通过"
 
 
-echo "🔨 构建Docker镜像..."
-docker build -t bilibili-notifier .
+echo "🔨 清除旧Docker镜像..."
+docker rmi bilibili-notifier-bilibili-notifier
 
 echo "🚀 启动服务..."
 docker-compose up -d

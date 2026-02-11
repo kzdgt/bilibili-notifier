@@ -440,7 +440,7 @@ class session_cookie:
             'Host': 'api.bilibili.com'
         }
         resp = self.sess.get(Url_followed_dynamics, headers=headers).json()
-        print(json.dumps(resp, ensure_ascii=False, indent=2, sort_keys=True))
+        #print(json.dumps(resp, ensure_ascii=False, indent=2, sort_keys=True))
         has_update = self.compare_and_run(resp)
         if not JSON_FILE.exists():
             print("首次运行，本地无旧数据，视为更新。")
